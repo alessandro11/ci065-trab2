@@ -27,6 +27,14 @@
 *.i*86
 *.x86_64
 *.hex
+exemplo
+teste
 
 # Debug files
 *.dSYM/
+
+# eclipse project files.
+.cproject
+.project
+.settings/
+
