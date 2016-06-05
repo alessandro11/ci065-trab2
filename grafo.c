@@ -38,6 +38,11 @@ typedef int bool;
 #define FALSE		0
 #endif
 
+typedef enum __state {
+	Visitado = 0,
+	NaoVisitado
+}e_State;
+
 struct grafo {
     UINT    g_nvertices;
     UINT    g_naresta;
@@ -52,12 +57,15 @@ struct vertice {
     char*	v_nome;
     int*	v_lbl;
     bool	visitado;
+    int		pad;
     lista   v_arestas;
+    lista	v_neighborhood_in;
+    lista	v_neighborhood_out;
 };
 
 struct aresta {
 	bool	a_ponderado;
-	int		pad;
+	int		visitada;
     LINT	a_peso;
     vertice	a_orig;         // tail
     vertice	a_dst;          // head
@@ -151,67 +159,85 @@ grafo le_grafo(FILE *input) {
     build_list[1] = BuildListOfArrows;
     for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) )
     	build_list[g->g_tipo](g, Ag_g, Ag_v, agnameof(Ag_v));
-    print_debug(g);
 
     agclose(Ag_g);
     return g;
+}
+
+void print_vertexes(lista l) {
+	no n;
+	struct vertice* v;
+
+	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
+		v = conteudo(n);
+		printf("%s\n", v->v_nome);
+		printf("\tVizinhos in:\n");
+		print_a(v->v_arestas);
+		printf("\tVizinhos out:\n");
+		print_a(v->v_arestas);
+	}
+	fflush(stdout);
+}
+
+void print_a(lista l) {
+	no n;
+	struct aresta* a;
+
+	n=primeiro_no(l);
+	if( n ) {
+		a = conteudo(n);
+		printf("\t\to=%s  d=%s\n", a->a_orig->v_nome, a->a_dst->v_nome);
+		for( n=proximo_no(n); n; n=proximo_no(n) ) {
+			a = conteudo(n);
+			printf("\t\to=%s  d=%s\n", a->a_orig->v_nome, a->a_dst->v_nome);
+		}
+	}
+	fflush(stdout);
 }
 
 //------------------------------------------------------------------------------
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
 lista busca_largura_lexicografica(grafo g) {
-	no 		nv;
-	vertice v;
+	no 		na;
+	vertice v, outro;
+	aresta	a;
+	int 	label_atual, i;
 	lista 	sequencia = constroi_lista();
-	PHEAP 	heap = heap_alloc(g->g_nvertices);
-
-	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
-		vertice v = conteudo(nv);
-		v->v_lbl = (int*)malloc(sizeof(int) * (size_t)g->g_nvertices);
-		for( int i = 0; i < g->g_nvertices; i++ )
-			*(v->v_lbl+i) = 0;
-	}
+	PHEAP 	heap = heap_alloc((int)g->g_nvertices);
 
 	heap_push(heap, conteudo(primeiro_no(g->g_vertices)));
-	int label_atual = g->g_nvertices;
+	label_atual = (int)g->g_nvertices;
 	while( (v = heap_pop(heap)) != NULL ) {
-		if (v->visitado == -1)
-			continue;
-		v->visitado = -1; // -1 quer dizer que já foi inserido na sequencia
-		insere_lista(v, sequencia);
-		for (no na = primeiro_no(v->vizinhos_saida); na; na = proximo_no(na)) {
-			struct aresta *a = conteudo(na);
-			if (!a->visitada) {
-				vertice outro = a->origem == v ? a->destino : a->origem;
-				if (outro->visitado != -1) {
-					int i = 0;
-					while (outro->label[i])
-						i++;
-					outro->label[i] = label_atual;
+		if( v->visitado != -1 ) {
+			v->visitado = -1; // -1 quer dizer que já foi inserido na sequencia
+			insere_lista(v, sequencia);
+			for( na=primeiro_no(v->v_arestas); na; na=proximo_no(na) ) {
+				a = conteudo(na);
+				if( !a->visitada ) {
+					outro = a->a_orig == v ? a->a_dst : a->a_orig;
+					if( outro->visitado != -1 ) {
+						i = 0;
+						while( *(outro->v_lbl + i++) );
+						*(outro->v_lbl+i) = label_atual;
+					}
+					if( !outro->visitado ) { //não foi inserido na sequencia nem na heap
+						heap_push(heap, outro);
+						outro->visitado = 1; // 1 indica que já foi inserido na heap
+					}
+					a->visitada = 1;
 				}
-				if (!outro->visitado) { //não foi inserido na sequencia nem na heap
-					pushheap(h, outro);
-					outro->visitado = 1; // 1 indica que já foi inserido na heap
-				}
-				a->visitada = 1;
 			}
+			heapify(heap);
+			--label_atual;
 		}
-		heapify(h);
-		label_atual--;
 	}
 
-	for (no nv = primeiro_no(g->vertices); nv; nv = proximo_no(nv)) {
-		vertice vv = conteudo(nv);
-		free(vv->label);
-	}
-	desvisita_vertices(g);
-	desvisita_arestas(g);
-	freeheap(h);
+//	desvisita_vertices(g);
+//	desvisita_arestas(g);
+//	heap_free(heap);
 
-	return sequencia;*/
-	UNUSED(g);
-	return NULL;
+	return sequencia;
 }
 
 //------------------------------------------------------------------------------

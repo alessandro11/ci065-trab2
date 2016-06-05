@@ -10,6 +10,9 @@ int main(void) {
   if ( !g )
 
     return 1;
+  lista l = busca_largura_lexicografica(g);
+  print_vertexes(l);
+  return 0;
 
   printf("nome: %s\n", nome_grafo(g));
   int d = direcionado(g);
