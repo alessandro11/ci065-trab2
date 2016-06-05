@@ -57,7 +57,7 @@ struct vertice {
     char*	v_nome;
     int*	v_lbl;
     eState	visitado;
-    int		pad;
+    int		v_index;
     lista	v_neighborhood_in;
     lista	v_neighborhood_out;
 };
@@ -107,6 +107,9 @@ int lbl_ge(int *x, int *y);
 int lbl_g(int *x, int *y);
 void heap_free(PHEAP heap);
 PHEAP heap_alloc(int elem);
+void set_none_vertexes(grafo g);
+vertice primeiro_vizinho_a_direita(lista l);
+void set_none_arestas(grafo g);
 
 
 /*________________________________________________________________*/
@@ -316,6 +319,19 @@ lista busca_largura_lexicografica(grafo g) {
 	*/
 }
 
+void set_none_arestas(grafo g) {
+	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
+		vertice v = conteudo(nv);
+		for (no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na))
+		((aresta)conteudo(na))->visitada = eNotSet;
+	}
+}
+
+void set_none_vertexes(grafo g) {
+	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv))
+		((vertice)conteudo(nv))->visitado = eNotSet;
+}
+
 //------------------------------------------------------------------------------
 // devolve 1, se a lista l representa uma 
 //            ordem perfeita de eliminação para o grafo g ou
@@ -323,54 +339,114 @@ lista busca_largura_lexicografica(grafo g) {
 //
 // o tempo de execução é O(|V(G)|+|E(G)|)
 int ordem_perfeita_eliminacao(lista l, grafo g) {
-	UNUSED(l); UNUSED(g);
-	return 0;
+	lista *viz_dir = malloc(sizeof(lista) * (size_t) g->g_nvertices);
+
+	for (int i = 0; i < g->g_nvertices; i++)
+		viz_dir[i] = constroi_lista();
+
+	int count = 0;
+	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
+		vertice v = conteudo(nv);
+		v->visitado = eVisited;
+		v->v_index = count;
+		for(no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na) ) {
+			struct aresta *a = conteudo(na);
+			vertice outro = a->a_orig == v ? a->a_dst : a->a_orig;
+			if( outro->visitado )
+				continue;
+			// insere na lista somente os vizinhos que estão à direita na sequencia
+			// insere_lista(outro, viz_dir_aux[count]);
+			insere_lista(outro, viz_dir[count]);
+		}
+		count++;
+	}
+	set_none_vertexes(g);
+
+	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
+		vertice v = conteudo(nv);
+		vertice v2 = primeiro_vizinho_a_direita(viz_dir[v->v_index]);
+		if( !v2 )
+			continue;
+
+		lista l2 = viz_dir[v2->v_index];
+		for( no n2 = primeiro_no(viz_dir[v->v_index]); n2; n2 = proximo_no(n2) ) {
+			vertice tmp = conteudo(n2);
+			// tmp será todos os vizinhos à direita de v tirando o primeiro (v2)
+			if( tmp == v2 )
+				continue;
+			no n3;
+			for( n3 = primeiro_no(l2); n3; n3 = proximo_no(n3) ) {
+				if( tmp == conteudo(n3) )
+					break;
+			}
+			if( !n3 ) {
+				// n3 == NULL quer dizer que esse vizinho à direita de v
+				// não é vizinho à direita de v2
+				for (int i = 0; i < g->g_nvertices; i++) {
+					destroi_lista(viz_dir[i], NULL);
+				}
+				free(viz_dir);
+				return 0;
+			}
+		}
+	}
+
+	for (int i = 0; i < g->g_nvertices; i++) {
+		destroi_lista(viz_dir[i], NULL);
+	}
+	free(viz_dir);
+
+	return 1;
 }
 
 /*________________________________________________________________*/
 grafo escreve_grafo(FILE *output, grafo g) {
-	/*
 	vertice v;
-    aresta 	a;
-    char 	rep_aresta;
+    aresta 	e;
+    char 	ch;
+    no		n, ne;
 
+    if( !g ) return NULL;
     fprintf( output, "strict %sgraph \"%s\" {\n\n",
     		direcionado(g) ? "di" : "", g->g_nome
     );
 
-    for( no n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
-    	v = (vertice)conteudo(n);
-        fprintf( output, "    \"%s\"\n", v->v_nome );
-    }
+    for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) )
+        fprintf(output, "    \"%s\"\n", ((vertice)conteudo(n))->v_nome);
     fprintf( output, "\n" );
 
-    if( g->g_naresta ) {
-    	rep_aresta = direcionado(g) ? '>' : '-';
-        for( no n=primeiro_no(g->g_arestas); n; n=proximo_no(n) ) {
-            a = conteudo(n);
+	ch = direcionado(g) ? '>' : '-';
+	for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
+		v = (vertice)conteudo(n);
+		for( ne=primeiro_no(v->v_neighborhood_out); ne; ne=proximo_no(ne) ) {
+			e = (aresta)conteudo(ne);
+			if( e->visitada == eVisited ) continue;
+			e->visitada = eVisited;
+			fprintf(output, "    \"%s\" -%c \"%s\"",
+				e->a_orig->v_nome, ch, e->a_dst->v_nome
+			);
 
-            fprintf(output, "    \"%s\" -%c \"%s\"",
-                a->a_orig->v_nome, rep_aresta, a->a_dst->v_nome
-            );
-
-            if ( a->a_ponderado )
-                fprintf( output, " [peso=%ld]", a->a_peso );
-
-            fprintf( output, "\n" );
-        }
-    }
+			if ( g->g_ponderado )
+				fprintf( output, " [peso=%ld]", e->a_peso );
+			fprintf( output, "\n" );
+		}
+	}
     fprintf( output, "}\n" );
 
+    set_none_arestas(g);
     return g;
-    */
-	UNUSED(output); UNUSED(g);
-	return NULL;
 }
 
 /*________________________________________________________________*/
 int cordal(grafo g) {
-	UNUSED(g);
-	return 0;
+	lista l;
+	int r;
+
+	l = busca_largura_lexicografica(g);
+	r = ordem_perfeita_eliminacao(l, g);
+	destroi_lista(l, NULL);
+
+	return r;
 }
 
 /*________________________________________________________________*/
@@ -534,6 +610,21 @@ vertice busca_vertice(const char* tail, const char* head,
     }
 
     return r_tail;
+}
+
+vertice primeiro_vizinho_a_direita(lista l) {
+	no nv = primeiro_no(l);
+	if( !nv ) return NULL;
+
+	vertice vertice_menor_index = conteudo(nv);
+
+	for (nv = proximo_no(nv); nv; nv = proximo_no(nv)) {
+		vertice v = conteudo(nv);
+		if (v->v_index < vertice_menor_index->v_index)
+			vertice_menor_index = v;
+	}
+
+	return vertice_menor_index;
 }
 
 /*________________________________________________________________*/
