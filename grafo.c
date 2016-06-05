@@ -28,12 +28,21 @@
 typedef unsigned int UINT;
 typedef long int LINT;
 typedef unsigned short USHORT;
+typedef int bool;
+
+#ifndef TRUE
+#define TRUE		1
+#endif
+
+#ifndef FALSE
+#define FALSE
+#endif
 
 struct grafo {
     UINT    g_nvertices;
     UINT    g_naresta;
     int     g_tipo;
-    int     g_ponderado;
+    bool	g_ponderado;
     char*	g_nome;
     lista   g_vertices;             // lista de vértices.
     lista   g_arestas;              // lista geral de todas as arestas.
@@ -46,12 +55,23 @@ struct vertice {
 };
 
 struct aresta {
-    LINT    a_pad;
+	bool	a_ponderado;
+	int		pad;
     LINT	a_peso;
     vertice	a_orig;         // tail
     vertice	a_dst;          // head
 };
 typedef struct aresta *aresta;
+
+/*
+ * MACROS
+ */
+#define UNUSED(x)			(void)(x)
+#define dbg(fmt, ...) \
+	do { \
+		fprintf(stderr, fmt, ## __VA_ARGS__); \
+	} while(0)
+#define FPF_ERR(fmt, ...)	(fprintf(stderr, (fmt), ## __VA_ARGS__))
 
 void print_debug(grafo g);
 vertice busca_vertice(const char* tail, const char* head,
@@ -60,6 +80,7 @@ void check_head_tail(const char* vname, vertice* head, vertice* tail);
 int busca_aresta(lista l, aresta a);
 int destroi_vertice(void* c);
 int destroi_aresta(void* c);
+void* mymalloc(size_t size);
 
 
 /*________________________________________________________________*/
@@ -70,8 +91,6 @@ int		ponderado(grafo g)			{ return g->g_ponderado; }
 UINT	n_vertices(grafo g)			{ return g->g_nvertices;   }
 UINT	n_arestas(grafo g)			{ return g->g_naresta; }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-qual"
 /*________________________________________________________________*/
 grafo le_grafo(FILE *input) {
     Agraph_t    *Ag_g;
@@ -81,19 +100,16 @@ grafo le_grafo(FILE *input) {
     vertice		v, head, tail;
     aresta		a;
     char*		peso;
-    char*		vname;
-    int			err;
+    char*		head_name;
+    char		str_weight[5] = "peso";
 
-    g = (grafo)malloc(sizeof(struct grafo));
-    if( !g ) {
-    	perror("Erro ao alocar memoria!");
-        return NULL;
-    }
+    g = (grafo)mymalloc(sizeof(struct grafo));
 	memset(g, 0, sizeof(struct grafo));
 
     Ag_g = agread(input, NULL);
     if ( !Ag_g ) {
     	free(g);
+    	FPF_ERR("Could not read graph!\n");
         return NULL;
     }
 
@@ -101,68 +117,46 @@ grafo le_grafo(FILE *input) {
     g->g_tipo = agisdirected(Ag_g);
     g->g_nvertices= (UINT)agnnodes(Ag_g);
     g->g_naresta = (UINT)agnedges(Ag_g);
-
     g->g_vertices = constroi_lista();
     g->g_arestas = constroi_lista();
-
     for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) ) {
     	/* construct data for the actual vertex */
-        v = (vertice)malloc(sizeof(struct vertice));
-        if( !v ) goto CleanUp;
+        v = (vertice)mymalloc(sizeof(struct vertice));
         memset(v, 0, sizeof(struct vertice));
-        v->v_nome = strdup( agnameof(Ag_v) );
-        v->v_lbl  = (USHORT*)malloc(sizeof(USHORT) * g->g_nvertices);
+        v->v_nome = strdup(agnameof(Ag_v));
+        v->v_lbl  = (USHORT*)mymalloc(sizeof(USHORT) * g->g_nvertices);
 		memset(v->v_lbl, 0, sizeof(USHORT) * g->g_nvertices);
         v->v_arestas = constroi_lista();
         /* Insert vertex to the list of vertexes in the graph list. */
-        if( ! insere_lista(v, g->g_vertices) ) {
-        	err = errno;
-        	goto CleanUp;
-        }
+        if( ! insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
     }
 
     /* get all edges; neighborhood of all vertexes */
     for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) ) {
-    	vname = agnameof(Ag_v);
+    	head_name = agnameof(Ag_v);
 		for( Ag_e=agfstedge(Ag_g, Ag_v); Ag_e; Ag_e=agnxtedge(Ag_g, Ag_e, Ag_v) ) {
-			a = (aresta)malloc(sizeof(struct aresta));
-			if( !a ) {
-				err = errno;
-				goto CleanUp;
-			}
+			a = (aresta)mymalloc(sizeof(struct aresta));
 			memset(a, 0, sizeof(struct aresta));
-			a->a_peso = 1L;
-			peso = agget(Ag_e, (char*)"peso");
+			peso = agget(Ag_e, str_weight);
 			if( peso ) {
 				a->a_peso = atol(peso);
+				a->a_ponderado = TRUE;
 				g->g_ponderado = TRUE;
 			}
 			head = busca_vertice(agnameof(agtail(Ag_e)), \
 					agnameof(aghead(Ag_e)), g->g_vertices, &tail);
-            check_head_tail(vname, &head, &tail);
+            check_head_tail(head_name, &head, &tail);
             a->a_orig = head;
             a->a_dst  = tail;
-			if( ! insere_lista(a, head->v_arestas ) ) {
-				err = errno;
-				goto CleanUp;
-			}
-			if( ! busca_aresta(g->g_arestas, a) ) {
-				if( ! insere_lista(a, g->g_arestas)	) {
-					err = errno;
-					goto CleanUp;
-				}
-			}
+			if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
+			if( ! busca_aresta(g->g_arestas, a) )
+				if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
 		}
     }
     print_debug(g);
 
     agclose(Ag_g);
     return g;
-
-CleanUp:
-	if( g ) free(g);
-	fprintf(stderr, "%s\n", strerror(err));
-	return NULL;
 }
 
 
@@ -170,7 +164,7 @@ CleanUp:
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
 lista busca_largura_lexicografica(grafo g) {
-
+	UNUSED(g);
 	return NULL;
 }
 
@@ -181,7 +175,84 @@ lista busca_largura_lexicografica(grafo g) {
 //
 // o tempo de execução é O(|V(G)|+|E(G)|)
 int ordem_perfeita_eliminacao(lista l, grafo g) {
+	UNUSED(l); UNUSED(g);
 	return 0;
+}
+
+/*________________________________________________________________*/
+grafo escreve_grafo(FILE *output, grafo g) {
+	vertice v;
+    aresta 	a;
+    char 	rep_aresta;
+
+    fprintf( output, "strict %sgraph \"%s\" {\n\n",
+    		direcionado(g) ? "di" : "", g->g_nome
+    );
+
+    for( no n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
+    	v = (vertice)conteudo(n);
+        fprintf( output, "    \"%s\"\n", v->v_nome );
+    }
+    fprintf( output, "\n" );
+
+    if( g->g_naresta ) {
+    	rep_aresta = direcionado(g) ? '>' : '-';
+        for( no n=primeiro_no(g->g_arestas); n; n=proximo_no(n) ) {
+            a = conteudo(n);
+
+            fprintf(output, "    \"%s\" -%c \"%s\"",
+                a->a_orig->v_nome, rep_aresta, a->a_dst->v_nome
+            );
+
+            if ( a->a_ponderado )
+                fprintf( output, " [peso=%ld]", a->a_peso );
+
+            fprintf( output, "\n" );
+        }
+    }
+    fprintf( output, "}\n" );
+
+    return g;
+}
+
+/*________________________________________________________________*/
+int cordal(grafo g) {
+	UNUSED(g);
+	return 0;
+}
+
+/*________________________________________________________________*/
+int destroi_grafo(void *c) {
+	grafo g = (grafo)c;
+	int ret;
+	
+	free(g->g_nome);
+	ret = destroi_lista(g->g_vertices, destroi_vertice);
+	destroi_lista(g->g_arestas, NULL);
+	free(c);
+
+	return ret;
+}
+
+/*****
+ * Functions helpers.
+ *
+ ******************************************************************/
+int destroi_vertice(void* c) {
+	int ret;
+	vertice v = (vertice)c;
+
+	free(v->v_nome);
+	free(v->v_lbl);
+	ret = destroi_lista(v->v_arestas, destroi_aresta);
+	free(c);
+
+	return ret;
+}
+
+int destroi_aresta(void* c) {
+	free(c);
+	return 1;
 }
 
 /*________________________________________________________________*/
@@ -213,46 +284,15 @@ void check_head_tail(const char* vname, vertice* head, vertice* tail) {
     }
 }
 
-/*________________________________________________________________*/
-#define dbg(fmt, ...) \
-	do { \
-		fprintf(stderr, fmt, ## __VA_ARGS__); \
-	} while(0)
-void print_debug(grafo g) {
-	no 		n, n2;
-	vertice v;
-	aresta	a;
+void* mymalloc(size_t size) {
+	void* p;
 
-	dbg("Vertex...\n");
-	for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
-		v = conteudo(n);
-		dbg("(%s, %p)\n", v->v_nome, v);
+	if( !(p = malloc(size)) ) {
+		perror("Could not allocate memory!");
+        exit(EXIT_FAILURE);
 	}
 
-	dbg("Neighbors...\n");
-	for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
-		v = conteudo(n);
-		dbg("(%s, %p)\n", v->v_nome, v);
-
-		n2 = primeiro_no(v->v_arestas);
-		a = conteudo(n2);
-		dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
-		for( n2=proximo_no(n2); n2; n2=proximo_no(n2) ) {
-			a = conteudo(n2);
-			dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
-		}
-		putchar('\n');
-	}
-
-    dbg("List of edges...\n");
-	n = primeiro_no(g->g_arestas);
-	a = conteudo(n);
-	dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
-    for( n=proximo_no(n); n; n=proximo_no(n) ) {
-		a = conteudo(n);
-		dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
-    }
-	putchar('\n');
+	return p;
 }
 
 /******
@@ -289,71 +329,40 @@ vertice busca_vertice(const char* tail, const char* head,
 }
 
 /*________________________________________________________________*/
-grafo escreve_grafo(FILE *output, grafo g) {
+void print_debug(grafo g) {
+	no 		n, n2;
 	vertice v;
-    aresta 	a;
-    char 	rep_aresta;
+	aresta	a;
 
-    fprintf( output, "strict %sgraph \"%s\" {\n\n",
-    		direcionado(g) ? "di" : "", g->g_nome
-    );
+	dbg("Vertex...\n");
+	for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
+		v = conteudo(n);
+		dbg("(%s, %p)\n", v->v_nome, v);
+	}
 
-    for( no n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
-    	v = (vertice)conteudo(n);
-        fprintf( output, "    \"%s\"\n", v->v_nome );
-    }
-    fprintf( output, "\n" );
+	dbg("Neighbors...\n");
+	for( n=primeiro_no(g->g_vertices); n; n=proximo_no(n) ) {
+		v = conteudo(n);
+		dbg("(%s, %p)\n", v->v_nome, v);
 
-    if( g->g_naresta ) {
-    	rep_aresta = direcionado(g) ? '>' : '-';
-        for( no n=primeiro_no(g->g_arestas); n; n=proximo_no(n) ) {
-            a = conteudo(n);
+		n2 = primeiro_no(v->v_arestas);
+		a = conteudo(n2);
+		dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+		for( n2=proximo_no(n2); n2; n2=proximo_no(n2) ) {
+			a = conteudo(n2);
+			dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+		}
+		putchar('\n');
+	}
 
-            fprintf(output, "    \"%s\" -%c \"%s\"",
-                a->a_orig->v_nome, rep_aresta, a->a_dst->v_nome
-            );
+	dbg("List of edges...\n");
+	n = primeiro_no(g->g_arestas);
+	a = conteudo(n);
+	dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+	for( n=proximo_no(n); n; n=proximo_no(n) ) {
+		a = conteudo(n);
+		dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+	}
+	putchar('\n');
 
-//            if ( a->a_ponderado )
-//                fprintf( output, " [peso=%ld]", a->a_peso );
-
-            fprintf( output, "\n" );
-        }
-    }
-
-    fprintf( output, "}\n" );
-    return g;
-}
-
-/*________________________________________________________________*/
-int cordal(grafo g) {
-	return 0;
-}
-
-/*________________________________________________________________*/
-int destroi_grafo(void *c) {
-	grafo g = (grafo)c;
-	int ret;
-	
-	free(g->g_nome);
-	ret = destroi_lista(g->g_vertices, destroi_vertice);
-	ret &= destroi_lista(g->g_arestas, NULL);
-	free(c);
-
-	return ret;
-}
-
-/*________________________________________________________________*/
-int destroi_vertice(void* c) {
-	vertice v = (vertice)c;
-
-	free(v->v_nome);
-	free(v->v_lbl);
-	
-	return destroi_lista(v->v_arestas, destroi_aresta);
-}
-
-int destroi_aresta(void* c) {
-	free(c);
-	return 1;
-}
-#pragma GCC diagnostic pop
+ }
