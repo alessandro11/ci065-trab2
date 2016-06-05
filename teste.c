@@ -10,7 +10,10 @@ int main(void) {
   if ( !g )
 
     return 1;
+
+  print_vertexes(g);
   lista l = busca_largura_lexicografica(g);
+  puts("depois lexbfs");
   lprint_vertexes(l);
   return ! destroi_grafo(g);
 

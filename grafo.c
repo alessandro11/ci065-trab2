@@ -51,7 +51,6 @@ struct grafo {
     bool	g_ponderado;
     char*	g_nome;
     lista   g_vertices;             // lista de vértices.
-    lista   g_arestas;              // lista geral de todas as arestas.
 };
 
 struct vertice {
@@ -59,7 +58,6 @@ struct vertice {
     int*	v_lbl;
     eState	visitado;
     int		pad;
-    lista   v_arestas;
     lista	v_neighborhood_in;
     lista	v_neighborhood_out;
 };
@@ -141,7 +139,6 @@ grafo le_grafo(FILE *input) {
     g->g_nvertices= (UINT)agnnodes(Ag_g);
     g->g_naresta = (UINT)agnedges(Ag_g);
     g->g_vertices = constroi_lista();
-    g->g_arestas = constroi_lista();
     for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) ) {
     	/* construct data for the actual vertex */
         v = (vertice)mymalloc(sizeof(struct vertice));
@@ -149,11 +146,10 @@ grafo le_grafo(FILE *input) {
         v->v_nome = strdup(agnameof(Ag_v));
         v->v_lbl  = (int*)mymalloc(sizeof(int) * g->g_nvertices);
 		memset(v->v_lbl, 0, sizeof(int) * g->g_nvertices);
-        v->v_arestas = constroi_lista();
         v->v_neighborhood_in = constroi_lista();
         v->v_neighborhood_out = constroi_lista();
         /* Insert vertex to the list of vertexes in the graph list. */
-        if( ! insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
+        if( !insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
     }
 
     /* get all edges; neighborhood of all vertexes */
@@ -333,6 +329,7 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 
 /*________________________________________________________________*/
 grafo escreve_grafo(FILE *output, grafo g) {
+	/*
 	vertice v;
     aresta 	a;
     char 	rep_aresta;
@@ -365,6 +362,9 @@ grafo escreve_grafo(FILE *output, grafo g) {
     fprintf( output, "}\n" );
 
     return g;
+    */
+	UNUSED(output); UNUSED(g);
+	return NULL;
 }
 
 /*________________________________________________________________*/
@@ -379,8 +379,7 @@ int destroi_grafo(void *c) {
 	int ret;
 	
 	free(g->g_nome);
-	ret = destroi_lista(g->g_vertices, destroi_vertice) && \
-		  destroi_lista(g->g_arestas, NULL);
+	ret = destroi_lista(g->g_vertices, destroi_vertice);
 	free(c);
 
 	return ret;
@@ -396,9 +395,8 @@ int destroi_vertice(void* c) {
 
 	free(v->v_nome);
 	free(v->v_lbl);
-	ret = destroi_lista(v->v_arestas, destroi_aresta);
-	destroi_lista(v->v_neighborhood_in, NULL);
-	destroi_lista(v->v_neighborhood_out, NULL);
+	ret = destroi_lista(v->v_neighborhood_in, destroi_aresta) && \
+		  destroi_lista(v->v_neighborhood_out, destroi_aresta);
 	free(c);
 
 	return ret;
@@ -450,6 +448,7 @@ void* mymalloc(size_t size) {
 }
 
 static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name) {
+	UNUSED(head_name);
 	Agedge_t* 	Ag_e;
 	aresta 		a;
 	char*		weight;
@@ -457,23 +456,19 @@ static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char
 	vertice		head, tail;
 
 	for( Ag_e=agfstedge(Ag_g, Ag_v); Ag_e; Ag_e=agnxtedge(Ag_g, Ag_e, Ag_v) ) {
-		a = (aresta)mymalloc(sizeof(struct aresta));
-		memset(a, 0, sizeof(struct aresta));
-		weight = agget(Ag_e, str_weight);
-		if( weight ) {
-			a->a_peso = atol(weight);
-			a->a_ponderado = TRUE;
-			g->g_ponderado = TRUE;
-		}
-		head = busca_vertice(agnameof(agtail(Ag_e)),\
-				agnameof(aghead(Ag_e)), g->g_vertices, &tail);
-		check_head_tail(head_name, &head, &tail);
-		a->a_orig = head;
-		a->a_dst  = tail;
-		if( !insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
-		if( !busca_aresta(g->g_arestas, a) )
-			if( !insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
 		if( agtail(Ag_e) == Ag_v ) {
+			a = (aresta)mymalloc(sizeof(struct aresta));
+			memset(a, 0, sizeof(struct aresta));
+			weight = agget(Ag_e, str_weight);
+			if( weight ) {
+				a->a_peso = atol(weight);
+				a->a_ponderado = TRUE;
+				g->g_ponderado = TRUE;
+			}
+			tail = busca_vertice(agnameof(agtail(Ag_e)),\
+					agnameof(aghead(Ag_e)), g->g_vertices, &head);
+			a->a_orig = tail;
+			a->a_dst  = head;
 			if( !insere_lista(a, head->v_neighborhood_out ) ) exit(EXIT_FAILURE);
 			if( !insere_lista(a, tail->v_neighborhood_out ) ) exit(EXIT_FAILURE);
 		}
@@ -488,27 +483,23 @@ static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const cha
 	vertice		head, tail;
 
 	for( Ag_e=agfstout(Ag_g, Ag_v); Ag_e; Ag_e=agnxtout(Ag_g, Ag_e) ) {
-		a = (aresta)mymalloc(sizeof(struct aresta));
-		memset(a, 0, sizeof(struct aresta));
-		weight = agget(Ag_e, str_weight);
-		if( weight ) {
-			a->a_peso = atol(weight);
-			a->a_ponderado = TRUE;
-			g->g_ponderado = TRUE;
-		}
-		head = busca_vertice(agnameof(agtail(Ag_e)),\
-				agnameof(aghead(Ag_e)), g->g_vertices, &tail);
-		check_head_tail(head_name, &head, &tail);
-		a->a_orig = head;
-		a->a_dst  = tail;
-		if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
-		if( ! busca_aresta(g->g_arestas, a) )
-			if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
 		if( agtail(Ag_e) == Ag_v ) {
+			a = (aresta)mymalloc(sizeof(struct aresta));
+			memset(a, 0, sizeof(struct aresta));
+			weight = agget(Ag_e, str_weight);
+			if( weight ) {
+				a->a_peso = atol(weight);
+				a->a_ponderado = TRUE;
+				g->g_ponderado = TRUE;
+			}
+			tail = busca_vertice(agnameof(agtail(Ag_e)),\
+					agnameof(aghead(Ag_e)), g->g_vertices, &head);
+			check_head_tail(head_name, &head, &tail);
+			a->a_orig = head;
+			a->a_dst  = tail;
+			if( !insere_lista(a, tail->v_neighborhood_in ) ) exit(EXIT_FAILURE);
 			if( !insere_lista(a, head->v_neighborhood_out ) ) exit(EXIT_FAILURE);
-			if( !insere_lista(a, tail->v_neighborhood_out ) ) exit(EXIT_FAILURE);
 		}
-
 	}
 }
 
@@ -546,6 +537,7 @@ vertice busca_vertice(const char* tail, const char* head,
 }
 
 /*________________________________________________________________*/
+/*
 void print_debug(grafo g) {
 	no 		n, n2;
 	vertice v;
@@ -585,6 +577,8 @@ void print_debug(grafo g) {
 	putchar('\n');
 
  }
+ */
+
 /*
  *##################################################################
  * Block that represents module for heap operations.
