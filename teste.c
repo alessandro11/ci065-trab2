@@ -11,7 +11,7 @@ int main(void) {
 
     return 1;
   lista l = busca_largura_lexicografica(g);
-  print_vertexes(l);
+  lprint_vertexes(l);
   return 0;
 
   printf("nome: %s\n", nome_grafo(g));

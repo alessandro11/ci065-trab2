@@ -149,6 +149,8 @@ grafo le_grafo(FILE *input) {
         v->v_lbl  = (int*)mymalloc(sizeof(int) * g->g_nvertices);
 		memset(v->v_lbl, 0, sizeof(int) * g->g_nvertices);
         v->v_arestas = constroi_lista();
+        v->v_neighborhood_in = constroi_lista();
+        v->v_neighborhood_out = constroi_lista();
         /* Insert vertex to the list of vertexes in the graph list. */
         if( ! insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
     }
@@ -162,21 +164,6 @@ grafo le_grafo(FILE *input) {
 
     agclose(Ag_g);
     return g;
-}
-
-void print_vertexes(lista l) {
-	no n;
-	struct vertice* v;
-
-	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
-		v = conteudo(n);
-		printf("%s\n", v->v_nome);
-		printf("\tVizinhos in:\n");
-		print_a(v->v_arestas);
-		printf("\tVizinhos out:\n");
-		print_a(v->v_arestas);
-	}
-	fflush(stdout);
 }
 
 void print_a(lista l) {
@@ -195,10 +182,42 @@ void print_a(lista l) {
 	fflush(stdout);
 }
 
+void lprint_vertexes(lista l) {
+	no n;
+	struct vertice* v;
+
+	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
+		v = conteudo(n);
+		printf("%s\n", v->v_nome);
+		printf("\tVizinhos in:\n");
+		print_a(v->v_neighborhood_in);
+		printf("\tVizinhos out:\n");
+		print_a(v->v_neighborhood_out);
+	}
+	fflush(stdout);
+}
+
+void print_vertexes(grafo g) {
+	no n;
+	struct vertice* v;
+	lista l = g->g_vertices;
+
+	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
+		v = conteudo(n);
+		printf("%s\n", v->v_nome);
+		printf("\tVizinhos in:\n");
+		print_a(v->v_neighborhood_in);
+		printf("\tVizinhos out:\n");
+		print_a(v->v_neighborhood_out);
+	}
+	fflush(stdout);
+}
+
 //------------------------------------------------------------------------------
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
 lista busca_largura_lexicografica(grafo g) {
+	/*
 	no 		na;
 	vertice v, outro;
 	aresta	a;
@@ -235,9 +254,69 @@ lista busca_largura_lexicografica(grafo g) {
 
 //	desvisita_vertices(g);
 //	desvisita_arestas(g);
-//	heap_free(heap);
+	heap_free(heap);
 
 	return sequencia;
+	*/
+
+	// assume que g é conexo??
+	#define pushheap heap_push
+	#define freeheap heap_free
+	#define popheap	 heap_pop
+
+	lista sequencia = constroi_lista();
+	// insere no começo sempre, então sequencia final já será invertida
+	PHEAP 	h = heap_alloc((int)g->g_nvertices);
+
+//	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
+//		vertice v = conteudo(nv);
+//		v->v_lbl = malloc(sizeof(int) * (size_t)g->g_nvertices);
+//		for (int i = 0; i < (int)g->g_nvertices; i++) {
+//			v->v_lbl[i] = 0;
+//		}
+//	}
+
+	pushheap(h, conteudo(primeiro_no(g->g_vertices)));
+	vertice v;
+	int label_atual = (int)g->g_nvertices;
+	while ((v = popheap(h)) != NULL) {
+		if (v->visitado == -1)
+			continue;
+		v->visitado = -1; // -1 quer dizer que já foi inserido na sequencia
+		insere_lista(v, sequencia);
+		for (no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na)) {
+			struct aresta *a = conteudo(na);
+			if (!a->visitada) {
+				vertice outro = a->a_orig == v ? a->a_dst : a->a_orig;
+				if (outro->visitado != -1) {
+					int i = 0;
+					while (outro->v_lbl[i])
+						i++;
+					outro->v_lbl[i] = label_atual;
+				}
+				if (!outro->visitado) { //não foi inserido na sequencia nem na heap
+					pushheap(h, outro);
+					outro->visitado = 1; // 1 indica que já foi inserido na heap
+				}
+				a->visitada = 1;
+			}
+		}
+		heapify(h);
+		label_atual--;
+	}
+
+	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
+		vertice vv = conteudo(nv);
+		free(vv->v_lbl);
+	}
+//	desvisita_vertices(g);
+//	desvisita_arestas(g);
+	freeheap(h);
+
+	return sequencia;
+	#undef pushheap
+	#undef freeheap
+	#undef popheap
 }
 
 //------------------------------------------------------------------------------
@@ -317,6 +396,8 @@ int destroi_vertice(void* c) {
 	free(v->v_nome);
 	free(v->v_lbl);
 	ret = destroi_lista(v->v_arestas, destroi_aresta);
+	destroi_lista(v->v_neighborhood_in, NULL);
+	destroi_lista(v->v_neighborhood_out, NULL);
 	free(c);
 
 	return ret;
@@ -388,9 +469,14 @@ static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char
 		check_head_tail(head_name, &head, &tail);
 		a->a_orig = head;
 		a->a_dst  = tail;
-		if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
-		if( ! busca_aresta(g->g_arestas, a) )
-			if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
+		if( !insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
+		if( !busca_aresta(g->g_arestas, a) )
+			if( !insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
+
+		if( agtail(Ag_e) == Ag_v ) {
+			if( !insere_lista(a, head->v_neighborhood_out ) ) exit(EXIT_FAILURE);
+			if( !insere_lista(a, tail->v_neighborhood_out ) ) exit(EXIT_FAILURE);
+		}
 	}
 }
 
@@ -497,13 +583,23 @@ void print_debug(grafo g) {
  }
 /*
  *##################################################################
- * Block that represents module for heap.
+ * Block that represents module for heap operations.
  *##################################################################
  */
 #define DAD(k) 		( ((k) - 1) >> 1 )
 #define L_CHILD(k)	( (((k) + 1) << 1) - 1 )
 #define R_CHILD(k)	( ((k) + 1) << 1 );
-
+/*
+static int DAD(int x) {
+    return (x-1) / 2;
+}
+static int L_CHILD(int x) {
+    return ((x+1) * 2) - 1;
+}
+static int R_CHILD(int x) {
+    return (x+1) * 2;
+}
+*/
 PHEAP heap_alloc(int elem) {
 	PHEAP heap = (PHEAP)malloc(sizeof(HEAP));
 	if( !heap ) exit(EXIT_FAILURE);
@@ -530,7 +626,18 @@ int lbl_g(int *x, int *y) {
 		i++;
 	}
 
-	return *(x+i) > *(y+i);
+	return( *(x+i) > *(y+i) );
+
+	/*
+    //retorna 1 se a > b
+    int i = 0;
+    while (x[i] == y[i]) {
+        if (x[i] == 0)
+            return 0;
+        i++;
+    }
+    return x[i] > y[i];
+	*/
 }
 
 int lbl_ge(int *x, int *y) {
@@ -543,6 +650,16 @@ int lbl_ge(int *x, int *y) {
 	}
 
 	return *(x+i) >= *(y+i);
+	/*
+    //retorna 1 se a >= b
+    int i = 0;
+    while (x[i] == y[i]) {
+        if (x[i] == 0)
+            return 1;
+        i++;
+    }
+    return x[i] >= y[i];
+	*/
 }
 
 void heap_push(PHEAP heap, vertice data) {
@@ -555,7 +672,7 @@ void heap_push(PHEAP heap, vertice data) {
 	*(heap->v+z) = data;
 	heap->pos++;
 
-	while( z ) { /* while not root */
+	while( z ) {
 		u = DAD(z);
 		if( lbl_ge((*(heap->v+u))->v_lbl , (*(heap->v+z))->v_lbl) ) break;
 
@@ -564,6 +681,27 @@ void heap_push(PHEAP heap, vertice data) {
 		*(heap->v+z) = tmp;
 		z = u;
 	}
+
+	/*
+    if (heap->pos == heap->elem)
+        return;
+    // heap cheia
+
+    int z = heap->pos;
+    heap->v[z] = data;
+    heap->pos++;
+
+    while (z) { //while not root
+        int u = DAD(z);
+        if (lbl_ge(heap->v[u]->v_lbl, heap->v[z]->v_lbl))
+            break;
+        //sobe o elemento na árvore
+        vertice tmp = heap->v[u];
+        heap->v[u] = heap->v[z];
+        heap->v[z] = tmp;
+        z = u;
+    }
+	*/
 }
 
 vertice heap_pop(PHEAP heap) {
@@ -574,7 +712,7 @@ vertice heap_pop(PHEAP heap) {
 
 	ret = *heap->v;
 	heap->pos--;
-	heap->v = (heap->v + heap->pos);
+	*heap->v = *(heap->v + heap->pos);
 
 	k = 0;
 	while( (l = L_CHILD(r)) < heap->pos ) {
@@ -592,9 +730,61 @@ vertice heap_pop(PHEAP heap) {
 	}
 
 	return ret;
+
+	/*
+    if (heap->pos == 0) {
+        return NULL;
+    }
+
+    vertice retorno = heap->v[0];
+
+    heap->pos--;
+    heap->v[0] = heap->v[heap->pos]; // coloca o último como raiz
+
+    int r = 0;
+    int e;
+    while ((e = L_CHILD(r)) < heap->pos) {
+        int d = R_CHILD(r);
+        int filho;
+        if (d < heap->pos && lbl_g(heap->v[e]->v_lbl, heap->v[d]->v_lbl)) {
+            filho = d;
+        } else {
+            filho = e;
+        }
+        if (lbl_g(heap->v[r]->v_lbl, heap->v[filho]->v_lbl)) {
+            vertice tmp = heap->v[filho];
+            heap->v[filho] = heap->v[r];
+            heap->v[r] = tmp;
+            r = filho;
+        } else {
+            break;
+        }
+    }
+
+    return retorno;
+	*/
 }
 
 void heap_sort(PHEAP heap, int i) {
+    int l, r, maior;
+    l = L_CHILD(i);
+    r = R_CHILD(i);
+    if ((l < heap->pos) && lbl_g(heap->v[l]->v_lbl, heap->v[i]->v_lbl)) {
+        maior = l;
+    } else {
+        maior = i;
+    }
+    if ((r < heap->pos) && lbl_g(heap->v[r]->v_lbl, heap->v[i]->v_lbl)) {
+        maior = r;
+    }
+    if (maior != i) {
+        vertice tmp = heap->v[maior];
+        heap->v[maior] = heap->v[i];
+        heap->v[i] = tmp;
+        heap_sort(heap, maior);
+    }
+
+	/*
 	int l, r, g;
 	vertice tmp;
 
@@ -613,10 +803,15 @@ void heap_sort(PHEAP heap, int i) {
 		*(heap->v+i) = tmp;
 		heap_sort(heap, g);
 	}
-
+	*/
 }
 
 void heapify(PHEAP heap) {
 	for( int i = heap->pos >> 1; i >= 0; --i )
 		heap_sort(heap, i);
+	/*
+    for (int i = heap->pos/2; i >=0; i--) {
+        heap_sort(heap, i);
+    }
+    */
 }
