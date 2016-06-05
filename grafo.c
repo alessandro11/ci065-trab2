@@ -35,7 +35,7 @@ typedef int bool;
 #endif
 
 #ifndef FALSE
-#define FALSE
+#define FALSE		0
 #endif
 
 struct grafo {
@@ -50,7 +50,8 @@ struct grafo {
 
 struct vertice {
     char*	v_nome;
-    USHORT*	v_lbl;
+    int*	v_lbl;
+    bool	visitado;
     lista   v_arestas;
 };
 
@@ -62,6 +63,13 @@ struct aresta {
     vertice	a_dst;          // head
 };
 typedef struct aresta *aresta;
+
+typedef struct __heap {
+	int 		elem;
+	int 		pos;
+	vertice*	v;
+}HEAP;
+typedef HEAP* PHEAP;
 
 /*
  * MACROS
@@ -81,6 +89,17 @@ int busca_aresta(lista l, aresta a);
 int destroi_vertice(void* c);
 int destroi_aresta(void* c);
 void* mymalloc(size_t size);
+static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name);
+static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name);
+typedef void (*BuildList)(grafo, Agraph_t*, Agnode_t*, const char*);
+void heapify(PHEAP heap);
+void heap_sort(PHEAP heap, int i);
+vertice heap_pop(PHEAP heap);
+void heap_push(PHEAP heap, vertice data);
+int lbl_ge(int *x, int *y);
+int lbl_g(int *x, int *y);
+void heap_free(PHEAP heap);
+PHEAP heap_alloc(int elem);
 
 
 /*________________________________________________________________*/
@@ -93,15 +112,10 @@ UINT	n_arestas(grafo g)			{ return g->g_naresta; }
 
 /*________________________________________________________________*/
 grafo le_grafo(FILE *input) {
-    Agraph_t    *Ag_g;
-    Agnode_t	*Ag_v;
-	Agedge_t	*Ag_e;
+    Agraph_t*	Ag_g;
+    Agnode_t*	Ag_v;
     grafo       g;
-    vertice		v, head, tail;
-    aresta		a;
-    char*		peso;
-    char*		head_name;
-    char		str_weight[5] = "peso";
+    vertice		v;
 
     g = (grafo)mymalloc(sizeof(struct grafo));
 	memset(g, 0, sizeof(struct grafo));
@@ -124,46 +138,78 @@ grafo le_grafo(FILE *input) {
         v = (vertice)mymalloc(sizeof(struct vertice));
         memset(v, 0, sizeof(struct vertice));
         v->v_nome = strdup(agnameof(Ag_v));
-        v->v_lbl  = (USHORT*)mymalloc(sizeof(USHORT) * g->g_nvertices);
-		memset(v->v_lbl, 0, sizeof(USHORT) * g->g_nvertices);
+        v->v_lbl  = (int*)mymalloc(sizeof(int) * g->g_nvertices);
+		memset(v->v_lbl, 0, sizeof(int) * g->g_nvertices);
         v->v_arestas = constroi_lista();
         /* Insert vertex to the list of vertexes in the graph list. */
         if( ! insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
     }
 
     /* get all edges; neighborhood of all vertexes */
-    for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) ) {
-    	head_name = agnameof(Ag_v);
-		for( Ag_e=agfstedge(Ag_g, Ag_v); Ag_e; Ag_e=agnxtedge(Ag_g, Ag_e, Ag_v) ) {
-			a = (aresta)mymalloc(sizeof(struct aresta));
-			memset(a, 0, sizeof(struct aresta));
-			peso = agget(Ag_e, str_weight);
-			if( peso ) {
-				a->a_peso = atol(peso);
-				a->a_ponderado = TRUE;
-				g->g_ponderado = TRUE;
-			}
-			head = busca_vertice(agnameof(agtail(Ag_e)), \
-					agnameof(aghead(Ag_e)), g->g_vertices, &tail);
-            check_head_tail(head_name, &head, &tail);
-            a->a_orig = head;
-            a->a_dst  = tail;
-			if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
-			if( ! busca_aresta(g->g_arestas, a) )
-				if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
-		}
-    }
+    BuildList build_list[2];
+    build_list[0] = BuildListOfEdges;
+    build_list[1] = BuildListOfArrows;
+    for( Ag_v=agfstnode(Ag_g); Ag_v; Ag_v=agnxtnode(Ag_g, Ag_v) )
+    	build_list[g->g_tipo](g, Ag_g, Ag_v, agnameof(Ag_v));
     print_debug(g);
 
     agclose(Ag_g);
     return g;
 }
 
-
 //------------------------------------------------------------------------------
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
 lista busca_largura_lexicografica(grafo g) {
+	no 		nv;
+	vertice v;
+	lista 	sequencia = constroi_lista();
+	PHEAP 	heap = heap_alloc(g->g_nvertices);
+
+	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
+		vertice v = conteudo(nv);
+		v->v_lbl = (int*)malloc(sizeof(int) * (size_t)g->g_nvertices);
+		for( int i = 0; i < g->g_nvertices; i++ )
+			*(v->v_lbl+i) = 0;
+	}
+
+	heap_push(heap, conteudo(primeiro_no(g->g_vertices)));
+	int label_atual = g->g_nvertices;
+	while( (v = heap_pop(heap)) != NULL ) {
+		if (v->visitado == -1)
+			continue;
+		v->visitado = -1; // -1 quer dizer que já foi inserido na sequencia
+		insere_lista(v, sequencia);
+		for (no na = primeiro_no(v->vizinhos_saida); na; na = proximo_no(na)) {
+			struct aresta *a = conteudo(na);
+			if (!a->visitada) {
+				vertice outro = a->origem == v ? a->destino : a->origem;
+				if (outro->visitado != -1) {
+					int i = 0;
+					while (outro->label[i])
+						i++;
+					outro->label[i] = label_atual;
+				}
+				if (!outro->visitado) { //não foi inserido na sequencia nem na heap
+					pushheap(h, outro);
+					outro->visitado = 1; // 1 indica que já foi inserido na heap
+				}
+				a->visitada = 1;
+			}
+		}
+		heapify(h);
+		label_atual--;
+	}
+
+	for (no nv = primeiro_no(g->vertices); nv; nv = proximo_no(nv)) {
+		vertice vv = conteudo(nv);
+		free(vv->label);
+	}
+	desvisita_vertices(g);
+	desvisita_arestas(g);
+	freeheap(h);
+
+	return sequencia;*/
 	UNUSED(g);
 	return NULL;
 }
@@ -295,6 +341,61 @@ void* mymalloc(size_t size) {
 	return p;
 }
 
+static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name) {
+	Agedge_t* 	Ag_e;
+	aresta 		a;
+	char*		weight;
+	char		str_weight[5] = "peso";
+	vertice		head, tail;
+
+	for( Ag_e=agfstedge(Ag_g, Ag_v); Ag_e; Ag_e=agnxtedge(Ag_g, Ag_e, Ag_v) ) {
+		a = (aresta)mymalloc(sizeof(struct aresta));
+		memset(a, 0, sizeof(struct aresta));
+		weight = agget(Ag_e, str_weight);
+		if( weight ) {
+			a->a_peso = atol(weight);
+			a->a_ponderado = TRUE;
+			g->g_ponderado = TRUE;
+		}
+		head = busca_vertice(agnameof(agtail(Ag_e)),\
+				agnameof(aghead(Ag_e)), g->g_vertices, &tail);
+		check_head_tail(head_name, &head, &tail);
+		a->a_orig = head;
+		a->a_dst  = tail;
+		if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
+		if( ! busca_aresta(g->g_arestas, a) )
+			if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
+	}
+}
+
+static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name) {
+	Agedge_t* 	Ag_e;
+	aresta 		a;
+	char*		weight;
+	char		str_weight[5] = "peso";
+	vertice		head, tail;
+
+	for( Ag_e=agfstout(Ag_g, Ag_v); Ag_e; Ag_e=agnxtout(Ag_g, Ag_e) ) {
+		a = (aresta)mymalloc(sizeof(struct aresta));
+		memset(a, 0, sizeof(struct aresta));
+		weight = agget(Ag_e, str_weight);
+		if( weight ) {
+			a->a_peso = atol(weight);
+			a->a_ponderado = TRUE;
+			g->g_ponderado = TRUE;
+		}
+		head = busca_vertice(agnameof(agtail(Ag_e)),\
+				agnameof(aghead(Ag_e)), g->g_vertices, &tail);
+		check_head_tail(head_name, &head, &tail);
+		a->a_orig = head;
+		a->a_dst  = tail;
+		if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
+		if( ! busca_aresta(g->g_arestas, a) )
+			if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
+
+	}
+}
+
 /******
  * Descrição:
  *  Busca um vértice de acordo com o nome.
@@ -346,13 +447,15 @@ void print_debug(grafo g) {
 		dbg("(%s, %p)\n", v->v_nome, v);
 
 		n2 = primeiro_no(v->v_arestas);
-		a = conteudo(n2);
-		dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
-		for( n2=proximo_no(n2); n2; n2=proximo_no(n2) ) {
+		if( n2 ) {
 			a = conteudo(n2);
-			dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+			dbg("\t(%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+			for( n2=proximo_no(n2); n2; n2=proximo_no(n2) ) {
+				a = conteudo(n2);
+				dbg(", (%s, %s)", a->a_orig->v_nome, a->a_dst->v_nome);
+			}
+			putchar('\n');
 		}
-		putchar('\n');
 	}
 
 	dbg("List of edges...\n");
@@ -366,3 +469,128 @@ void print_debug(grafo g) {
 	putchar('\n');
 
  }
+/*
+ *##################################################################
+ * Block that represents module for heap.
+ *##################################################################
+ */
+#define DAD(k) 		( ((k) - 1) >> 1 )
+#define L_CHILD(k)	( (((k) + 1) << 1) - 1 )
+#define R_CHILD(k)	( ((k) + 1) << 1 );
+
+PHEAP heap_alloc(int elem) {
+	PHEAP heap = (PHEAP)malloc(sizeof(HEAP));
+	if( !heap ) exit(EXIT_FAILURE);
+	heap->v = (vertice*)malloc(sizeof(struct vertice) * (size_t)elem);
+	if( !heap->v ) exit(EXIT_FAILURE);
+	heap->elem = elem;
+	heap->pos = 0;
+
+	return heap;
+
+}
+
+void heap_free(PHEAP heap) {
+	free(heap->v);
+	free(heap);
+}
+
+int lbl_g(int *x, int *y) {
+	int i = 0;
+
+	while( *(x+i) == *(y+i) ) {
+		if( *(x+i) == 0 )
+			return 0;
+		i++;
+	}
+
+	return *(x+i) > *(y+i);
+}
+
+int lbl_ge(int *x, int *y) {
+	int i = 0;
+
+	while( *(x+i) == *(y+i) ) {
+		if( *(x+i) == 0 )
+			return 1;
+		i++;
+	}
+
+	return *(x+i) >= *(y+i);
+}
+
+void heap_push(PHEAP heap, vertice data) {
+	int u, z;
+	vertice tmp;
+
+	if( heap->pos == heap->elem ) return;
+
+	z = heap->pos;
+	*(heap->v+z) = data;
+	heap->pos++;
+
+	while( z ) { /* while not root */
+		u = DAD(z);
+		if( lbl_ge((*(heap->v+u))->v_lbl , (*(heap->v+z))->v_lbl) ) break;
+
+		tmp = *(heap->v + u);
+		*(heap->v+u) = *(heap->v + z);
+		*(heap->v+z) = tmp;
+		z = u;
+	}
+}
+
+vertice heap_pop(PHEAP heap) {
+	int k, l, r, child;
+	vertice tmp, ret;
+
+	if( heap->pos == 0 ) return NULL;
+
+	ret = *heap->v;
+	heap->pos--;
+	heap->v = (heap->v + heap->pos);
+
+	k = 0;
+	while( (l = L_CHILD(r)) < heap->pos ) {
+		r = R_CHILD(k);
+		if( r < heap->pos && lbl_g((*(heap->v+l))->v_lbl, (*(heap->v+r))->v_lbl) )
+			child = r;
+		else child = l;
+
+		if( lbl_g((*(heap->v+k))->v_lbl, (*(heap->v+child))->v_lbl) ) {
+			tmp = *(heap->v + child);
+			*(heap->v+child) = *(heap->v + k);
+			*(heap->v+k) = tmp;
+			k = child;
+		} else break;
+	}
+
+	return ret;
+}
+
+void heap_sort(PHEAP heap, int i) {
+	int l, r, g;
+	vertice tmp;
+
+	l = L_CHILD(i);
+	r = R_CHILD(i);
+	if( (l < heap->pos) && lbl_g((*(heap->v+l))->v_lbl, (*(heap->v+i))->v_lbl) )
+		g = l;
+	else
+		g = i;
+
+	if( (r < heap->pos) && lbl_g((*(heap->v+r))->v_lbl, (*(heap->v+i))->v_lbl) )
+		g = r;
+	if( g != i ) {
+		tmp = *(heap->v+g);
+		*(heap->v+g) = *(heap->v+i);
+		*(heap->v+i) = tmp;
+		heap_sort(heap, g);
+	}
+
+}
+
+void heapify(PHEAP heap) {
+	for( int i = heap->pos >> 1; i >= 0; --i )
+		heap_sort(heap, i);
+}

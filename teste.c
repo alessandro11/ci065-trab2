@@ -18,7 +18,7 @@ int main(void) {
   unsigned n = n_vertices(g);
   printf("%d vértices\n", n);
   printf("%d arestas\n", n_arestas(g));
-  //escreve_grafo(stdout, g);
+  escreve_grafo(stdout, g);
   if (!d && n < 20)
     printf("\n%s %s é cordal\n", nome_grafo(g), cordal(g) ? "" : "não ");
 
