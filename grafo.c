@@ -39,9 +39,10 @@ typedef int bool;
 #endif
 
 typedef enum __state {
-	Visitado = 0,
-	NaoVisitado
-}e_State;
+	eNotSet = 0,
+	eVisited,
+	eInserted
+}eState;
 
 struct grafo {
     UINT    g_nvertices;
@@ -56,7 +57,7 @@ struct grafo {
 struct vertice {
     char*	v_nome;
     int*	v_lbl;
-    bool	visitado;
+    eState	visitado;
     int		pad;
     lista   v_arestas;
     lista	v_neighborhood_in;
@@ -65,7 +66,7 @@ struct vertice {
 
 struct aresta {
 	bool	a_ponderado;
-	int		visitada;
+	eState	visitada;
     LINT	a_peso;
     vertice	a_orig;         // tail
     vertice	a_dst;          // head
@@ -217,38 +218,37 @@ void print_vertexes(grafo g) {
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
 lista busca_largura_lexicografica(grafo g) {
-	/*
 	no 		na;
 	vertice v, outro;
 	aresta	a;
-	int 	label_atual, i;
+	int 	current_lbl, i;
 	lista 	sequencia = constroi_lista();
 	PHEAP 	heap = heap_alloc((int)g->g_nvertices);
 
 	heap_push(heap, conteudo(primeiro_no(g->g_vertices)));
-	label_atual = (int)g->g_nvertices;
+	current_lbl = (int)g->g_nvertices;
 	while( (v = heap_pop(heap)) != NULL ) {
-		if( v->visitado != -1 ) {
-			v->visitado = -1; // -1 quer dizer que já foi inserido na sequencia
+		if( v->visitado != eInserted ) {
+			v->visitado = eInserted;
 			insere_lista(v, sequencia);
-			for( na=primeiro_no(v->v_arestas); na; na=proximo_no(na) ) {
+			for( na=primeiro_no(v->v_neighborhood_out); na; na=proximo_no(na) ) {
 				a = conteudo(na);
 				if( !a->visitada ) {
 					outro = a->a_orig == v ? a->a_dst : a->a_orig;
-					if( outro->visitado != -1 ) {
+					if( outro->visitado != eInserted ) {
 						i = 0;
 						while( *(outro->v_lbl + i++) );
-						*(outro->v_lbl+i) = label_atual;
+						*(outro->v_lbl+i) = current_lbl;
 					}
-					if( !outro->visitado ) { //não foi inserido na sequencia nem na heap
+					if( !outro->visitado ) {
 						heap_push(heap, outro);
-						outro->visitado = 1; // 1 indica que já foi inserido na heap
+						outro->visitado = eVisited;
 					}
-					a->visitada = 1;
+					a->visitada = eVisited;
 				}
 			}
 			heapify(heap);
-			--label_atual;
+			--current_lbl;
 		}
 	}
 
@@ -257,8 +257,8 @@ lista busca_largura_lexicografica(grafo g) {
 	heap_free(heap);
 
 	return sequencia;
-	*/
 
+	/*
 	// assume que g é conexo??
 	#define pushheap heap_push
 	#define freeheap heap_free
@@ -317,6 +317,7 @@ lista busca_largura_lexicografica(grafo g) {
 	#undef pushheap
 	#undef freeheap
 	#undef popheap
+	*/
 }
 
 //------------------------------------------------------------------------------
@@ -378,8 +379,8 @@ int destroi_grafo(void *c) {
 	int ret;
 	
 	free(g->g_nome);
-	ret = destroi_lista(g->g_vertices, destroi_vertice);
-	destroi_lista(g->g_arestas, NULL);
+	ret = destroi_lista(g->g_vertices, destroi_vertice) && \
+		  destroi_lista(g->g_arestas, NULL);
 	free(c);
 
 	return ret;
@@ -472,7 +473,6 @@ static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char
 		if( !insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
 		if( !busca_aresta(g->g_arestas, a) )
 			if( !insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
-
 		if( agtail(Ag_e) == Ag_v ) {
 			if( !insere_lista(a, head->v_neighborhood_out ) ) exit(EXIT_FAILURE);
 			if( !insere_lista(a, tail->v_neighborhood_out ) ) exit(EXIT_FAILURE);
@@ -504,6 +504,10 @@ static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const cha
 		if( ! insere_lista(a, head->v_arestas ) ) exit(EXIT_FAILURE);
 		if( ! busca_aresta(g->g_arestas, a) )
 			if( ! insere_lista(a, g->g_arestas) ) exit(EXIT_FAILURE);
+		if( agtail(Ag_e) == Ag_v ) {
+			if( !insere_lista(a, head->v_neighborhood_out ) ) exit(EXIT_FAILURE);
+			if( !insere_lista(a, tail->v_neighborhood_out ) ) exit(EXIT_FAILURE);
+		}
 
 	}
 }
@@ -815,3 +819,4 @@ void heapify(PHEAP heap) {
     }
     */
 }
+
