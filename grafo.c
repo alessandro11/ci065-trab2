@@ -126,6 +126,7 @@ PHEAP heap_alloc(int elem);
 void set_none_vertexes(grafo g);
 vertice nxt_neighbor_r(lista l);
 void set_none_arestas(grafo g);
+int are_neighbors(vertice v1, vertice v2);
 
 
 /*________________________________________________________________*/
@@ -352,6 +353,67 @@ grafo escreve_grafo(FILE *output, grafo g) {
 
     set_none_arestas(g);
     return g;
+}
+
+//------------------------------------------------------------------------------
+// devolve 1, se o conjunto dos vertices em l é uma clique em g, ou
+//         0, caso contrário
+//
+// um conjunto C de vértices de um grafo é uma clique em g
+// se todo vértice em C é vizinho de todos os outros vértices de C em g
+int are_neighbors(vertice v1, vertice v2) {
+	aresta 	a;
+	no 		n;
+
+    for( n=primeiro_no(v1->v_neighborhood_out); n; n = proximo_no(n)) {
+        a = (aresta)conteudo(n);
+        if( (a->a_dst == v2 && a->a_orig == v1) ||\
+        	(a->a_dst == v1 && a->a_orig == v2)) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+//------------------------------------------------------------------------------
+int clique(lista l, grafo g) {
+    UNUSED(g);
+    no		n, n2;
+    vertice	v, v2;
+
+    for( n=primeiro_no(l); n; n = proximo_no(n)) {
+        v = conteudo(n);
+        for( n2=proximo_no(n); n2; n2=proximo_no(n2)) {
+            v2 = conteudo(n2);
+            if( !are_neighbors(v, v2) )
+                return 0;
+        }
+    }
+
+    return 1;
+}
+
+//------------------------------------------------------------------------------
+// devolve 1, se v é um vértice simplicial em g, ou
+//         0, caso contrário
+//
+// um vértice é simplicial no grafo se sua vizinhança é uma clique
+int simplicial(vertice v, grafo g) {
+    no		n;
+    lista 	l = constroi_lista();
+    aresta	a;
+    int		ret;
+
+    for( n=primeiro_no(v->v_neighborhood_out); n; n=proximo_no(n)) {
+        a = conteudo(n);
+        insere_lista(a->a_dst == v ? a->a_orig : a->a_dst, l);
+    }
+
+    ret = clique(l, g);
+    destroi_lista(l, NULL);
+
+    return ret;
 }
 
 //------------------------------------------------------------------------------
