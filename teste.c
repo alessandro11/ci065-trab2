@@ -11,6 +11,13 @@ int main(void) {
 
     return 1;
 
+//  print_vertexes(g);
+//  return ! destroi_grafo(g);
+
+//  lista l = busca_largura_lexicografica(g);
+//  lprint_vertexes(l);
+//  return ! destroi_grafo(g);
+
   printf("nome: %s\n", nome_grafo(g));
   int d = direcionado(g);
   printf("%sdirecionado\n", d ? "" : "não ");
