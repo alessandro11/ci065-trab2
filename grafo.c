@@ -167,7 +167,7 @@ grafo le_grafo(FILE *input) {
 		memset(v->v_lbl, 0, sizeof(int) * g->g_nvertices);
         v->v_neighborhood_in = constroi_lista();
         v->v_neighborhood_out = constroi_lista();
-        /* Insert vertex to the list of vertexes in the graph list. */
+        // Insert vertex to the list of vertexes in the graph list.
         if( !insere_lista(v, g->g_vertices) ) exit(EXIT_FAILURE);
     }
 
@@ -182,56 +182,11 @@ grafo le_grafo(FILE *input) {
     return g;
 }
 
-void print_a(lista l) {
-	no n;
-	struct aresta* a;
-
-	n=primeiro_no(l);
-	if( n ) {
-		a = conteudo(n);
-		printf("\t\to=%s  d=%s\n", a->a_orig->v_nome, a->a_dst->v_nome);
-		for( n=proximo_no(n); n; n=proximo_no(n) ) {
-			a = conteudo(n);
-			printf("\t\to=%s  d=%s\n", a->a_orig->v_nome, a->a_dst->v_nome);
-		}
-	}
-	fflush(stdout);
-}
-
-void lprint_vertexes(lista l) {
-	no n;
-	struct vertice* v;
-
-	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
-		v = conteudo(n);
-		printf("%s\n", v->v_nome);
-		printf("\tVizinhos in:\n");
-		print_a(v->v_neighborhood_in);
-		printf("\tVizinhos out:\n");
-		print_a(v->v_neighborhood_out);
-	}
-	fflush(stdout);
-}
-
-void print_vertexes(grafo g) {
-	no n;
-	struct vertice* v;
-	lista l = g->g_vertices;
-
-	for( n=primeiro_no(l); n; n=proximo_no(n) ) {
-		v = conteudo(n);
-		printf("%s\n", v->v_nome);
-		printf("\tVizinhos in:\n");
-		print_a(v->v_neighborhood_in);
-		printf("\tVizinhos out:\n");
-		print_a(v->v_neighborhood_out);
-	}
-	fflush(stdout);
-}
-
 //------------------------------------------------------------------------------
 // devolve uma lista de vertices com a ordem dos vértices dada por uma 
 // busca em largura lexicográfica
+//
+// A função faz uso da heap para implementar com uma performace umm pouco maior.
 lista busca_largura_lexicografica(grafo g) {
 	no 		na;
 	vertice v, aux;
@@ -245,8 +200,8 @@ lista busca_largura_lexicografica(grafo g) {
 	heap_push(heap, conteudo(primeiro_no(g->g_vertices)));
 	current_lbl = (int)g->g_nvertices;
 	while( (v = heap_pop(heap)) != NULL ) {
-		if( v->v_visitado == eInserted ) continue;
-		v->v_visitado = eInserted; // -1 quer dizer que já foi inserido na perf_seq
+		if( v->v_visitado == eInserted ) continue; // Se já inserido na lista perfeita, va para p prox.
+		v->v_visitado = eInserted; // Marque como inserido.
 		insere_lista(v, perf_seq);
 		for( na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na) ) {
 			a = conteudo(na);
@@ -257,9 +212,11 @@ lista busca_largura_lexicografica(grafo g) {
 					while( *(aux->v_lbl+i++) );
 					*(aux->v_lbl+i) = current_lbl;
 				}
-				if( !aux->v_visitado ) { //não foi inserido na perf_seq nem na heap
+				// Se chegou aqui é porque não esta nem na lista perfeira nem na heap.
+				if( !aux->v_visitado ) {
 					heap_push(heap, aux);
-					aux->v_visitado = eVisited; // 1 indica que já foi inserido na heap
+					// aqui indica que foi inserido na heap.
+					aux->v_visitado = eVisited;
 				}
 				a->a_visitada = eVisited;
 			}
@@ -274,71 +231,10 @@ lista busca_largura_lexicografica(grafo g) {
 
 	return perf_seq;
 
-	/*
-	// assume que g é conexo??
-	#define pushheap heap_push
-	#define freeheap heap_free
-	#define popheap	 heap_pop
-
-	lista perf_seq = constroi_lista();
-	// insere no começo sempre, então perf_seq final já será invertida
-	PHEAP 	h = heap_alloc((int)g->g_nvertices);
-
-//	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
-//		vertice v = conteudo(nv);
-//		v->v_lbl = malloc(sizeof(int) * (size_t)g->g_nvertices);
-//		for (int i = 0; i < (int)g->g_nvertices; i++) {
-//			v->v_lbl[i] = 0;
-//		}
-//	}
-
-	pushheap(h, conteudo(primeiro_no(g->g_vertices)));
-	vertice v;
-	int label_atual = (int)g->g_nvertices;
-	while ((v = popheap(h)) != NULL) {
-		if (v->v_visitado == -1)
-			continue;
-		v->v_visitado = -1; // -1 quer dizer que já foi inserido na perf_seq
-		insere_lista(v, perf_seq);
-		for (no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na)) {
-			struct aresta *a = conteudo(na);
-			if (!a->a_visitada) {
-				vertice aux = a->a_orig == v ? a->a_dst : a->a_orig;
-				if (aux->v_visitado != -1) {
-					int i = 0;
-					while (aux->v_lbl[i])
-						i++;
-					aux->v_lbl[i] = label_atual;
-				}
-				if (!aux->v_visitado) { //não foi inserido na perf_seq nem na heap
-					pushheap(h, aux);
-					aux->v_visitado = 1; // 1 indica que já foi inserido na heap
-				}
-				a->a_visitada = 1;
-			}
-		}
-		heapify(h);
-		label_atual--;
-	}
-
-//	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
-//		vertice vv = conteudo(nv);
-//		free(vv->v_lbl);
-//	}
-//	desvisita_vertices(g);
-//	desvisita_arestas(g);
-	set_none_vertexes(g);
-	set_none_arestas(g);
-
-	freeheap(h);
-
-	return perf_seq;
-	#undef pushheap
-	#undef freeheap
-	#undef popheap
-	*/
 }
 
+//------------------------------------------------------------------------------
+// Seta para não visitados as arestas do grafo G.
 void set_none_arestas(grafo g) {
 	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
 		vertice v = conteudo(nv);
@@ -347,6 +243,8 @@ void set_none_arestas(grafo g) {
 	}
 }
 
+//------------------------------------------------------------------------------
+// Seta para não visitados os vertices do grafo G.
 void set_none_vertexes(grafo g) {
 	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv))
 		((vertice)conteudo(nv))->v_visitado = eNotSet;
@@ -366,7 +264,7 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 	vertice	v, v2, aux, tmp;
 
 	neighbors_r = (lista*)mymalloc(sizeof(lista) * (size_t) g->g_nvertices);
-	for( i = 0; i < g->g_nvertices; i++ )
+	for( i = 0; i < g->g_nvertices; ++i )
 		*(neighbors_r+i) = constroi_lista();
 
 	count = 0;
@@ -378,7 +276,7 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 			e = (aresta)conteudo(ne);
 			aux = e->a_orig == v ? e->a_dst : e->a_orig;
 			if( aux->v_visitado ) continue;
-			// insere na lista somente os vizinhos que estão à direita na sequencia
+			// insere na lista somente os vizinhos que estão à direita da lista
 			insere_lista(aux, *(neighbors_r+count));
 		}
 		++count;
@@ -393,7 +291,7 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 		l2 = *(neighbors_r+v2->v_index);
 		for( n2 = primeiro_no(neighbors_r[v->v_index]); n2; n2 = proximo_no(n2) ) {
 			tmp = conteudo(n2);
-			// tmp será todos os vizinhos à direita de v tirando o primeiro (v2)
+			// tmp será todos os vizinhos à direita de v tirando)
 			if( tmp == v2 ) continue;
 			for( n3=primeiro_no(l2); n3; n3=proximo_no(n3) ) {
 				if( tmp == conteudo(n3) ) break;
@@ -416,71 +314,9 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 	free(neighbors_r);
 
 	return 1;
-
-
-	/*
-	lista *viz_dir = malloc(sizeof(lista) * (size_t) g->g_nvertices);
-
-	for (int i = 0; i < g->g_nvertices; i++)
-		viz_dir[i] = constroi_lista();
-
-	int count = 0;
-	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
-		vertice v = conteudo(nv);
-		v->v_visitado = eVisited;
-		v->v_index = count;
-		for(no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na) ) {
-			struct aresta *a = conteudo(na);
-			vertice outro = a->a_orig == v ? a->a_dst : a->a_orig;
-			if( outro->v_visitado )
-				continue;
-			// insere na lista somente os vizinhos que estão à direita na sequencia
-			// insere_lista(outro, viz_dir_aux[count]);
-			insere_lista(outro, viz_dir[count]);
-		}
-		count++;
-	}
-	set_none_vertexes(g);
-
-	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
-		vertice v = conteudo(nv);
-		vertice v2 = nxt_neighbor_r(viz_dir[v->v_index]);
-		if( !v2 )
-			continue;
-
-		lista l2 = viz_dir[v2->v_index];
-		for( no n2 = primeiro_no(viz_dir[v->v_index]); n2; n2 = proximo_no(n2) ) {
-			vertice tmp = conteudo(n2);
-			// tmp será todos os vizinhos à direita de v tirando o primeiro (v2)
-			if( tmp == v2 )
-				continue;
-			no n3;
-			for( n3 = primeiro_no(l2); n3; n3 = proximo_no(n3) ) {
-				if( tmp == conteudo(n3) )
-					break;
-			}
-			if( !n3 ) {
-				// n3 == NULL quer dizer que esse vizinho à direita de v
-				// não é vizinho à direita de v2
-				for (int i = 0; i < g->g_nvertices; i++) {
-					destroi_lista(viz_dir[i], NULL);
-				}
-				free(viz_dir);
-				return 0;
-			}
-		}
-	}
-
-	for (int i = 0; i < g->g_nvertices; i++) {
-		destroi_lista(viz_dir[i], NULL);
-	}
-	free(viz_dir);
-
-	return 1;
-	*/
 }
 
-/*________________________________________________________________*/
+//------------------------------------------------------------------------------
 grafo escreve_grafo(FILE *output, grafo g) {
 	vertice v;
     aresta 	e;
@@ -518,7 +354,48 @@ grafo escreve_grafo(FILE *output, grafo g) {
     return g;
 }
 
-/*________________________________________________________________*/
+//------------------------------------------------------------------------------
+// devolve a vizinhança do vértice v no grafo g
+//
+// se direcao == 0, v é um vértice de um grafo não direcionado
+//                  e a função devolve sua vizinhanca
+//
+// se direcao == -1, v é um vértice de um grafo direcionado e a função
+//                   devolve sua vizinhanca de entrada
+//
+// se direcao == 1, v é um vértice de um grafo direcionado e a função
+//                  devolve sua vizinhanca de saída
+lista vizinhanca(vertice v, int direcao, grafo g) {
+	UNUSED(g);
+    if( direcao == 0 )
+        return v->v_neighborhood_out;
+    else
+        return( direcao == -1 ? v->v_neighborhood_in : v->v_neighborhood_out );
+}
+
+//------------------------------------------------------------------------------
+// devolve o grau do vértice v no grafo g
+//
+// se direcao == 0, v é um vértice de um grafo não direcionado
+//                  e a função devolve seu grau
+//
+// se direcao == -1, v é um vértice de um grafo direcionado
+//                   e a função devolve seu grau de entrada
+//
+// se direcao == 1, v é um vértice de um grafo direcionado
+//                  e a função devolve seu grau de saída
+unsigned int grau(vertice v, int direcao, grafo g) {
+    UNUSED(g);
+    if( direcao == 0 )
+        return tamanho_lista(v->v_neighborhood_out);
+    else
+        return( direcao == -1 ? tamanho_lista(v->v_neighborhood_in)\
+            : tamanho_lista(v->v_neighborhood_out) );
+}
+
+//------------------------------------------------------------------------------
+// devolve 1, se g é um grafo cordal ou
+//         0, caso contrário
 int cordal(grafo g) {
 	lista l;
 	int r;
@@ -530,7 +407,14 @@ int cordal(grafo g) {
 	return r;
 }
 
-/*________________________________________________________________*/
+//------------------------------------------------------------------------------
+// desaloca toda a memória usada em *g
+//
+// devolve 1 em caso de sucesso ou
+//         0 caso contrário
+//
+// g é um (void *) para que destroi_grafo() possa ser usada como argumento de
+// destroi_lista()
 int destroi_grafo(void *c) {
 	grafo g = (grafo)c;
 	int ret;
@@ -564,7 +448,7 @@ int destroi_aresta(void* c) {
 	return 1;
 }
 
-/*________________________________________________________________*/
+//------------------------------------------------------------------------------
 int busca_aresta(lista l, aresta a) {
 	no n;
 	aresta p;
@@ -579,7 +463,8 @@ int busca_aresta(lista l, aresta a) {
 	return found;
 }
 
-/*________________________________________________________________*/
+//------------------------------------------------------------------------------
+// Funcao para retornar quem é head, quem é tail em relação ao vertice vname.
 void check_head_tail(const char* vname, vertice* head, vertice* tail) {
     vertice tmp;
 
@@ -593,6 +478,7 @@ void check_head_tail(const char* vname, vertice* head, vertice* tail) {
     }
 }
 
+//------------------------------------------------------------------------------
 void* mymalloc(size_t size) {
 	void* p;
 
@@ -604,6 +490,8 @@ void* mymalloc(size_t size) {
 	return p;
 }
 
+//------------------------------------------------------------------------------
+// Le todas as arestas the um grado não direcionado.
 static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name) {
 	UNUSED(head_name);
 	Agedge_t* 	Ag_e;
@@ -632,6 +520,8 @@ static void BuildListOfEdges(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char
 	}
 }
 
+//------------------------------------------------------------------------------
+// Le todas os arcos de um grafo direcionato.
 static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const char* head_name) {
 	Agedge_t* 	Ag_e;
 	aresta 		a;
@@ -660,20 +550,10 @@ static void BuildListOfArrows(grafo g, Agraph_t* Ag_g, Agnode_t* Ag_v, const cha
 	}
 }
 
-/******
- * Descrição:
- *  Busca um vértice de acordo com o nome.
- *
- * Param:
- * a_nome - constant string com o nome do vértice.
- *    v   - ponteiro para o primeiro elemento de veŕtices.
- *
- * Retorno:
- *  vértice se encontrado
- *  NULL caso contrário.
- *
- * OBS: ver readme para lógica criada para a alocação dos vértices.
-******************************************************************************/
+//------------------------------------------------------------------------------
+// Encontra um vertice baseado em seu nome.
+// devolve 	ponteiro para o elemento da lista head,
+// 			e tail em vdst.
 vertice busca_vertice(const char* tail, const char* head,
 		lista vertices, vertice* vdst) {
 
@@ -693,6 +573,8 @@ vertice busca_vertice(const char* tail, const char* head,
     return r_tail;
 }
 
+//------------------------------------------------------------------------------
+// retorna o próximo vizinho a direita da lista l.
 vertice nxt_neighbor_r(lista l) {
 	vertice smallest_vi;
 	no nv = primeiro_no(l);
@@ -710,23 +592,16 @@ vertice nxt_neighbor_r(lista l) {
 
 /*
  *##################################################################
- * Block that represents module for heap operations.
+ * Block that represents module for heap operations. Esta imple -
+ * mentação usa o min heap, ou seja, o menor valor será a raiz.
+ *
+ * Ref.: https://pt.wikipedia.org/wiki/Heap
  *##################################################################
  */
 #define DAD(k) 		( ((k) - 1) >> 1 )
 #define L_CHILD(k)	( (((k) + 1) << 1) - 1 )
 #define R_CHILD(k)	( ((k) + 1) << 1 );
-/*
-static int DAD(int x) {
-    return (x-1) / 2;
-}
-static int L_CHILD(int x) {
-    return ((x+1) * 2) - 1;
-}
-static int R_CHILD(int x) {
-    return (x+1) * 2;
-}
-*/
+
 PHEAP heap_alloc(int elem) {
 	PHEAP heap = (PHEAP)malloc(sizeof(HEAP));
 	if( !heap ) exit(EXIT_FAILURE);
@@ -739,11 +614,14 @@ PHEAP heap_alloc(int elem) {
 
 }
 
+//------------------------------------------------------------------------------
 void heap_free(PHEAP heap) {
 	free(heap->v);
 	free(heap);
 }
 
+//------------------------------------------------------------------------------
+// menor rótulo
 int lbl_g(int *x, int *y) {
 	int i = 0;
 
@@ -754,19 +632,10 @@ int lbl_g(int *x, int *y) {
 	}
 
 	return( *(x+i) > *(y+i) );
-
-	/*
-    //retorna 1 se a > b
-    int i = 0;
-    while (x[i] == y[i]) {
-        if (x[i] == 0)
-            return 0;
-        i++;
-    }
-    return x[i] > y[i];
-	*/
 }
 
+//------------------------------------------------------------------------------
+// rótulo maior ou igual.
 int lbl_ge(int *x, int *y) {
 	int i = 0;
 
@@ -777,18 +646,9 @@ int lbl_ge(int *x, int *y) {
 	}
 
 	return *(x+i) >= *(y+i);
-	/*
-    //retorna 1 se a >= b
-    int i = 0;
-    while (x[i] == y[i]) {
-        if (x[i] == 0)
-            return 1;
-        i++;
-    }
-    return x[i] >= y[i];
-	*/
 }
 
+//------------------------------------------------------------------------------
 void heap_push(PHEAP heap, vertice data) {
 	int u, z;
 	vertice tmp;
@@ -808,29 +668,9 @@ void heap_push(PHEAP heap, vertice data) {
 		*(heap->v+z) = tmp;
 		z = u;
 	}
-
-	/*
-    if (heap->pos == heap->elem)
-        return;
-    // heap cheia
-
-    int z = heap->pos;
-    heap->v[z] = data;
-    heap->pos++;
-
-    while (z) { //while not root
-        int u = DAD(z);
-        if (lbl_ge(heap->v[u]->v_lbl, heap->v[z]->v_lbl))
-            break;
-        //sobe o elemento na árvore
-        vertice tmp = heap->v[u];
-        heap->v[u] = heap->v[z];
-        heap->v[z] = tmp;
-        z = u;
-    }
-	*/
 }
 
+//------------------------------------------------------------------------------
 vertice heap_pop(PHEAP heap) {
 	int k, l, r, child;
 	vertice tmp, ret;
@@ -857,41 +697,9 @@ vertice heap_pop(PHEAP heap) {
 	}
 
 	return ret;
-
-	/*
-    if (heap->pos == 0) {
-        return NULL;
-    }
-
-    vertice retorno = heap->v[0];
-
-    heap->pos--;
-    heap->v[0] = heap->v[heap->pos]; // coloca o último como raiz
-
-    int r = 0;
-    int e;
-    while ((e = L_CHILD(r)) < heap->pos) {
-        int d = R_CHILD(r);
-        int filho;
-        if (d < heap->pos && lbl_g(heap->v[e]->v_lbl, heap->v[d]->v_lbl)) {
-            filho = d;
-        } else {
-            filho = e;
-        }
-        if (lbl_g(heap->v[r]->v_lbl, heap->v[filho]->v_lbl)) {
-            vertice tmp = heap->v[filho];
-            heap->v[filho] = heap->v[r];
-            heap->v[r] = tmp;
-            r = filho;
-        } else {
-            break;
-        }
-    }
-
-    return retorno;
-	*/
 }
 
+//------------------------------------------------------------------------------
 void heap_sort(PHEAP heap, int i) {
     int l, r, maior;
     l = L_CHILD(i);
@@ -910,36 +718,12 @@ void heap_sort(PHEAP heap, int i) {
         heap->v[i] = tmp;
         heap_sort(heap, maior);
     }
-
-	/*
-	int l, r, g;
-	vertice tmp;
-
-	l = L_CHILD(i);
-	r = R_CHILD(i);
-	if( (l < heap->pos) && lbl_g((*(heap->v+l))->v_lbl, (*(heap->v+i))->v_lbl) )
-		g = l;
-	else
-		g = i;
-
-	if( (r < heap->pos) && lbl_g((*(heap->v+r))->v_lbl, (*(heap->v+i))->v_lbl) )
-		g = r;
-	if( g != i ) {
-		tmp = *(heap->v+g);
-		*(heap->v+g) = *(heap->v+i);
-		*(heap->v+i) = tmp;
-		heap_sort(heap, g);
-	}
-	*/
 }
 
+//------------------------------------------------------------------------------
+// Corrige descendo, tambem chamdo de heapify.
 void heapify(PHEAP heap) {
 	for( int i = heap->pos >> 1; i >= 0; --i )
 		heap_sort(heap, i);
-	/*
-    for (int i = heap->pos/2; i >=0; i--) {
-        heap_sort(heap, i);
-    }
-    */
 }
 
