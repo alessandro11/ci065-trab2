@@ -38,11 +38,28 @@ typedef int bool;
 #define FALSE		0
 #endif
 
+//------------------------------------------------------------------------------
+// Enumeração com os estados de um vértice.
+// Não setado, visitado ou inserido.
+
 typedef enum __state {
 	eNotSet = 0,
 	eVisited,
 	eInserted
 }eState;
+
+//------------------------------------------------------------------------------
+// (apontador para) estrutura de dados para representar um grafo
+//
+// o grafo pode ser
+// - direcionado ou não
+// - com pesos nas arestas ou não
+//
+// além dos vértices e arestas, o grafo tem um nome, que é uma "string"
+//
+// num grafo com pesos nas arestas todas as arestas tem peso, que é um long int
+//
+// o peso default de uma aresta é 0
 
 struct grafo {
     UINT    g_nvertices;
@@ -50,13 +67,13 @@ struct grafo {
     int     g_tipo;
     bool	g_ponderado;
     char*	g_nome;
-    lista   g_vertices;             // lista de vértices.
+    lista   g_vertices;      // lista de vértices.
 };
 
 struct vertice {
     char*	v_nome;
     int*	v_lbl;
-    eState	visitado;
+    eState	v_visitado;
     int		v_index;
     lista	v_neighborhood_in;
     lista	v_neighborhood_out;
@@ -64,7 +81,7 @@ struct vertice {
 
 struct aresta {
 	bool	a_ponderado;
-	eState	visitada;
+	eState	a_visitada;
     LINT	a_peso;
     vertice	a_orig;         // tail
     vertice	a_dst;          // head
@@ -79,7 +96,7 @@ typedef struct __heap {
 typedef HEAP* PHEAP;
 
 /*
- * MACROS
+ * MACROS AUXILIARES
  */
 #define UNUSED(x)			(void)(x)
 #define dbg(fmt, ...) \
@@ -107,7 +124,7 @@ int lbl_g(int *x, int *y);
 void heap_free(PHEAP heap);
 PHEAP heap_alloc(int elem);
 void set_none_vertexes(grafo g);
-vertice primeiro_vizinho_a_direita(lista l);
+vertice nxt_neighbor_r(lista l);
 void set_none_arestas(grafo g);
 
 
@@ -228,23 +245,23 @@ lista busca_largura_lexicografica(grafo g) {
 	heap_push(heap, conteudo(primeiro_no(g->g_vertices)));
 	current_lbl = (int)g->g_nvertices;
 	while( (v = heap_pop(heap)) != NULL ) {
-		if( v->visitado == eInserted ) continue;
-		v->visitado = eInserted; // -1 quer dizer que já foi inserido na perf_seq
+		if( v->v_visitado == eInserted ) continue;
+		v->v_visitado = eInserted; // -1 quer dizer que já foi inserido na perf_seq
 		insere_lista(v, perf_seq);
 		for( na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na) ) {
 			a = conteudo(na);
-			if( !a->visitada ) {
+			if( !a->a_visitada ) {
 				aux = a->a_orig == v ? a->a_dst : a->a_orig;
-				if( aux->visitado != eInserted ) {
+				if( aux->v_visitado != eInserted ) {
 					i = 0;
 					while( *(aux->v_lbl+i++) );
 					*(aux->v_lbl+i) = current_lbl;
 				}
-				if( !aux->visitado ) { //não foi inserido na perf_seq nem na heap
+				if( !aux->v_visitado ) { //não foi inserido na perf_seq nem na heap
 					heap_push(heap, aux);
-					aux->visitado = eVisited; // 1 indica que já foi inserido na heap
+					aux->v_visitado = eVisited; // 1 indica que já foi inserido na heap
 				}
-				a->visitada = eVisited;
+				a->a_visitada = eVisited;
 			}
 		}
 		heapify(heap);
@@ -279,25 +296,25 @@ lista busca_largura_lexicografica(grafo g) {
 	vertice v;
 	int label_atual = (int)g->g_nvertices;
 	while ((v = popheap(h)) != NULL) {
-		if (v->visitado == -1)
+		if (v->v_visitado == -1)
 			continue;
-		v->visitado = -1; // -1 quer dizer que já foi inserido na perf_seq
+		v->v_visitado = -1; // -1 quer dizer que já foi inserido na perf_seq
 		insere_lista(v, perf_seq);
 		for (no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na)) {
 			struct aresta *a = conteudo(na);
-			if (!a->visitada) {
+			if (!a->a_visitada) {
 				vertice aux = a->a_orig == v ? a->a_dst : a->a_orig;
-				if (aux->visitado != -1) {
+				if (aux->v_visitado != -1) {
 					int i = 0;
 					while (aux->v_lbl[i])
 						i++;
 					aux->v_lbl[i] = label_atual;
 				}
-				if (!aux->visitado) { //não foi inserido na perf_seq nem na heap
+				if (!aux->v_visitado) { //não foi inserido na perf_seq nem na heap
 					pushheap(h, aux);
-					aux->visitado = 1; // 1 indica que já foi inserido na heap
+					aux->v_visitado = 1; // 1 indica que já foi inserido na heap
 				}
-				a->visitada = 1;
+				a->a_visitada = 1;
 			}
 		}
 		heapify(h);
@@ -326,13 +343,13 @@ void set_none_arestas(grafo g) {
 	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv)) {
 		vertice v = conteudo(nv);
 		for (no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na))
-		((aresta)conteudo(na))->visitada = eNotSet;
+		((aresta)conteudo(na))->a_visitada = eNotSet;
 	}
 }
 
 void set_none_vertexes(grafo g) {
 	for (no nv = primeiro_no(g->g_vertices); nv; nv = proximo_no(nv))
-		((vertice)conteudo(nv))->visitado = eNotSet;
+		((vertice)conteudo(nv))->v_visitado = eNotSet;
 }
 
 //------------------------------------------------------------------------------
@@ -342,28 +359,27 @@ void set_none_vertexes(grafo g) {
 //
 // o tempo de execução é O(|V(G)|+|E(G)|)
 int ordem_perfeita_eliminacao(lista l, grafo g) {
-	lista* 	viz_dir, l2;
+	lista* 	neighbors_r, l2;
 	UINT 	i, count;
 	no		nv, ne, n2, n3;
 	aresta	e;
-	vertice	v, v2, outro, tmp;
+	vertice	v, v2, aux, tmp;
 
-	viz_dir = (lista*)mymalloc(sizeof(lista) * (size_t) g->g_nvertices);
+	neighbors_r = (lista*)mymalloc(sizeof(lista) * (size_t) g->g_nvertices);
 	for( i = 0; i < g->g_nvertices; i++ )
-		*(viz_dir+i) = constroi_lista();
+		*(neighbors_r+i) = constroi_lista();
 
 	count = 0;
 	for( nv=primeiro_no(l); nv; nv=proximo_no(nv) ) {
 		v = (vertice)conteudo(nv);
-		v->visitado = eVisited;
+		v->v_visitado = eVisited;
 		v->v_index = (int)count;
 		for( ne=primeiro_no(v->v_neighborhood_out); ne; ne=proximo_no(ne) ) {
 			e = (aresta)conteudo(ne);
-			outro = e->a_orig == v ? e->a_dst : e->a_orig;
-			if( outro->visitado ) continue;
+			aux = e->a_orig == v ? e->a_dst : e->a_orig;
+			if( aux->v_visitado ) continue;
 			// insere na lista somente os vizinhos que estão à direita na sequencia
-			// insere_lista(outro, viz_dir_outro[count]);
-			insere_lista(outro, *(viz_dir+count));
+			insere_lista(aux, *(neighbors_r+count));
 		}
 		++count;
 	}
@@ -371,11 +387,11 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 
 	for( nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
 		v = conteudo(nv);
-		v2 = primeiro_vizinho_a_direita(*(viz_dir+v->v_index));
+		v2 = nxt_neighbor_r(*(neighbors_r+v->v_index));
 		if( !v2 ) continue;
 
-		l2 = *(viz_dir+v2->v_index);
-		for( n2 = primeiro_no(viz_dir[v->v_index]); n2; n2 = proximo_no(n2) ) {
+		l2 = *(neighbors_r+v2->v_index);
+		for( n2 = primeiro_no(neighbors_r[v->v_index]); n2; n2 = proximo_no(n2) ) {
 			tmp = conteudo(n2);
 			// tmp será todos os vizinhos à direita de v tirando o primeiro (v2)
 			if( tmp == v2 ) continue;
@@ -386,18 +402,18 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 				// n3 == NULL quer dizer que esse vizinho à direita de v
 				// não é vizinho à direita de v2
 				for( i = 0; i < g->g_nvertices; ++i ) {
-					destroi_lista(*(viz_dir+i), NULL);
+					destroi_lista(*(neighbors_r+i), NULL);
 				}
-				free(viz_dir);
+				free(neighbors_r);
 				return 0;
 			}
 		}
 	}
 
 	for( i = 0; i < g->g_nvertices; ++i ) {
-		destroi_lista(*(viz_dir+i), NULL);
+		destroi_lista(*(neighbors_r+i), NULL);
 	}
-	free(viz_dir);
+	free(neighbors_r);
 
 	return 1;
 
@@ -411,12 +427,12 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 	int count = 0;
 	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
 		vertice v = conteudo(nv);
-		v->visitado = eVisited;
+		v->v_visitado = eVisited;
 		v->v_index = count;
 		for(no na = primeiro_no(v->v_neighborhood_out); na; na = proximo_no(na) ) {
 			struct aresta *a = conteudo(na);
 			vertice outro = a->a_orig == v ? a->a_dst : a->a_orig;
-			if( outro->visitado )
+			if( outro->v_visitado )
 				continue;
 			// insere na lista somente os vizinhos que estão à direita na sequencia
 			// insere_lista(outro, viz_dir_aux[count]);
@@ -428,7 +444,7 @@ int ordem_perfeita_eliminacao(lista l, grafo g) {
 
 	for( no nv = primeiro_no(l); nv; nv = proximo_no(nv) ) {
 		vertice v = conteudo(nv);
-		vertice v2 = primeiro_vizinho_a_direita(viz_dir[v->v_index]);
+		vertice v2 = nxt_neighbor_r(viz_dir[v->v_index]);
 		if( !v2 )
 			continue;
 
@@ -485,8 +501,8 @@ grafo escreve_grafo(FILE *output, grafo g) {
 		v = (vertice)conteudo(n);
 		for( ne=primeiro_no(v->v_neighborhood_out); ne; ne=proximo_no(ne) ) {
 			e = (aresta)conteudo(ne);
-			if( e->visitada == eVisited ) continue;
-			e->visitada = eVisited;
+			if( e->a_visitada == eVisited ) continue;
+			e->a_visitada = eVisited;
 			fprintf(output, "    \"%s\" -%c \"%s\"",
 				e->a_orig->v_nome, ch, e->a_dst->v_nome
 			);
@@ -677,19 +693,19 @@ vertice busca_vertice(const char* tail, const char* head,
     return r_tail;
 }
 
-vertice primeiro_vizinho_a_direita(lista l) {
+vertice nxt_neighbor_r(lista l) {
+	vertice smallest_vi;
 	no nv = primeiro_no(l);
+
 	if( !nv ) return NULL;
-
-	vertice vertice_menor_index = conteudo(nv);
-
+	smallest_vi = conteudo(nv);
 	for (nv = proximo_no(nv); nv; nv = proximo_no(nv)) {
 		vertice v = conteudo(nv);
-		if (v->v_index < vertice_menor_index->v_index)
-			vertice_menor_index = v;
+		if (v->v_index < smallest_vi->v_index)
+			smallest_vi = v;
 	}
 
-	return vertice_menor_index;
+	return smallest_vi;
 }
 
 /*
